@@ -9,8 +9,7 @@ st.title("🎨 Color Blindness Assistant Tool")
 st.write("This tool helps color-blind users identify colors accurately using:")
 st.write("✔ Real-time webcam")
 st.write("✔ Uploading images")
-st.write("✔ Click detection")
-st.write("✔ Color-blind safe filters")
+st.write("✔ Color-blind assistance messages")
 
 # -------------------------------------------
 # COLOR NAME DETECTOR
@@ -42,7 +41,24 @@ def get_color_name(r, g, b):
     return cname
 
 # -------------------------------------------
-# COLOR-BLIND SIMULATION MODES
+# COLOR-BLIND ASSISTANCE
+# -------------------------------------------
+def assist_colorblind(r, g, b, colorblind_type):
+    cname = get_color_name(r, g, b)
+    
+    if colorblind_type == "Protanopia (Red Weak)" and cname in ["Red", "Pink", "Orange"]:
+        advise = f"This is {cname} (red may appear dull)"
+    elif colorblind_type == "Deuteranopia (Green Weak)" and cname in ["Green", "Yellow"]:
+        advise = f"This is {cname} (green may be hard to see)"
+    elif colorblind_type == "Tritanopia (Blue Weak)" and cname in ["Blue", "Purple"]:
+        advise = f"This is {cname} (blue may appear confusing)"
+    else:
+        advise = f"This is {cname}"
+    
+    return advise
+
+# -------------------------------------------
+# COLOR-BLIND FILTER (optional for enhancement)
 # -------------------------------------------
 def apply_colorblind_filter(img, mode):
     # Ensure RGB only (remove alpha channel if present)
@@ -68,12 +84,11 @@ def apply_colorblind_filter(img, mode):
     mat = matrix[mode]
 
     # Apply matrix transformation
-    filtered = img @ mat.T   # safer than .dot()
+    filtered = img @ mat.T
 
     # Clip and convert back
     filtered = np.clip(filtered, 0, 1)
     return (filtered * 255).astype("uint8")
-
 
 # -------------------------------------------
 # IMAGE UPLOAD
@@ -81,17 +96,23 @@ def apply_colorblind_filter(img, mode):
 st.header("📁 Upload Image for Color Detection")
 
 uploaded = st.file_uploader("Upload JPG/PNG image", type=["jpg", "jpeg", "png"])
-colorblind_mode = st.selectbox("Choose Color-Blind Mode", 
+colorblind_mode = st.selectbox("Choose Color-Blind Type", 
                                ["None", "Protanopia (Red Weak)", "Deuteranopia (Green Weak)", "Tritanopia (Blue Weak)"])
 
 if uploaded:
     img = Image.open(uploaded)
     img = np.array(img)
 
+    # Apply color-blind filter (optional)
     filtered_img = apply_colorblind_filter(img, colorblind_mode)
     st.image(filtered_img, caption=f"Filtered View: {colorblind_mode}", use_column_width=True)
 
-    st.write("Click on the image to detect color (using Streamlit image coordinate tool coming soon).")
+    # Detect center pixel color for assistance
+    h, w = filtered_img.shape[:2]
+    cx, cy = w//2, h//2
+    b, g, r = filtered_img[cy, cx]
+    advice = assist_colorblind(r, g, b, colorblind_mode)
+    st.write("🔹", advice)
 
 # -------------------------------------------
 # REAL-TIME WEBCAM
@@ -104,7 +125,7 @@ if start_cam:
     webcam_frame = st.empty()
     cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
 
-    while True:
+    while start_cam:
         ret, frame = cap.read()
         if not ret:
             st.write("Camera not found.")
@@ -114,16 +135,14 @@ if start_cam:
         cx, cy = w//2, h//2
 
         b, g, r = frame[cy, cx]
-        cname = get_color_name(r, g, b)
+        advice = assist_colorblind(r, g, b, colorblind_mode)
 
-        cv2.circle(frame, (cx, cy), 5, (0, 0, 0), -1)
-        cv2.putText(frame, f"{cname}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255), 2)
+        # Overlay circle and text
+        cv2.circle(frame, (cx, cy), 10, (0, 0, 0), -1)
+        cv2.putText(frame, advice, (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 2)
 
+        # Apply color-blind filter for enhancement (optional)
         filtered_frame = apply_colorblind_filter(frame, colorblind_mode)
         webcam_frame.image(filtered_frame, channels="BGR")
 
-        if not start_cam:
-            break
-
     cap.release()
-
