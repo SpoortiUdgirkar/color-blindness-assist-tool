@@ -45,6 +45,13 @@ def get_color_name(r, g, b):
 # COLOR-BLIND SIMULATION MODES
 # -------------------------------------------
 def apply_colorblind_filter(img, mode):
+    # Ensure RGB only (remove alpha channel if present)
+    if img.shape[2] == 4:
+        img = img[:, :, :3]
+
+    # Convert to float and normalize
+    img = img.astype("float32") / 255.0
+
     matrix = {
         "None": np.eye(3),
         "Protanopia (Red Weak)": np.array([[0.566, 0.433, 0.0],
@@ -59,10 +66,14 @@ def apply_colorblind_filter(img, mode):
     }
 
     mat = matrix[mode]
-    img = img.astype(float) / 255.0
-    filtered = img.dot(mat.T)
+
+    # Apply matrix transformation
+    filtered = img @ mat.T   # safer than .dot()
+
+    # Clip and convert back
     filtered = np.clip(filtered, 0, 1)
     return (filtered * 255).astype("uint8")
+
 
 # -------------------------------------------
 # IMAGE UPLOAD
