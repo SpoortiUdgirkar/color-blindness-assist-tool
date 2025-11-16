@@ -1,5 +1,4 @@
 import streamlit as st
-import cv2
 import numpy as np
 from PIL import Image
 
@@ -7,8 +6,7 @@ st.set_page_config(page_title="Color Blind Assistant", layout="wide")
 st.title("🎨 Color Blindness Assistant Tool")
 st.write("This tool helps color-blind users identify colors accurately using:")
 st.write("✔ Side-by-side comparison (simulated vs corrected)")
-st.write("✔ Uploaded images")
-st.write("✔ Real-time webcam")
+st.write("✔ Uploaded images only")
 
 # -------------------------------------------
 # COLOR NAME DETECTOR
@@ -109,48 +107,3 @@ if uploaded:
     with col2:
         st.image(img, caption="Original / Corrected Colors")
         st.write("🔹 Center Pixel Advice:", advice)
-
-# -------------------------------------------
-# REAL-TIME WEBCAM
-# -------------------------------------------
-st.header("📷 Real-Time Webcam Comparison")
-
-start_cam = st.checkbox("Start Camera")
-if start_cam:
-    webcam_frame = st.empty()
-    cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
-
-    while start_cam:
-        ret, frame = cap.read()
-        if not ret:
-            st.write("Camera not found.")
-            break
-
-        # Convert to RGB for PIL/Streamlit compatibility
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-        # Simulated image
-        if colorblind_type != "None":
-            simulated_frame = apply_colorblind_filter(frame_rgb, colorblind_type)
-        else:
-            simulated_frame = frame_rgb.copy()
-
-        # Detect center pixel
-        h, w = frame_rgb.shape[:2]
-        cx, cy = w//2, h//2
-        b, g, r = frame_rgb[cy, cx]
-        advice = assist_colorblind(r, g, b, colorblind_type)
-
-        # Draw circle on original frame
-        cv2.circle(frame_rgb, (cx, cy), 10, (0, 0, 0), -1)
-        cv2.putText(frame_rgb, advice, (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-
-        # Show side-by-side in Streamlit
-        col1, col2 = st.columns(2)
-        with col1:
-            col1.image(simulated_frame, caption=f"Simulated {colorblind_type}")
-        with col2:
-            col2.image(frame_rgb, caption="Original / Corrected Colors")
-            col2.write("🔹 Center Pixel Advice:", advice)
-
-    cap.release()
