@@ -1,128 +1,118 @@
 import streamlit as st
 import cv2
 import numpy as np
-from gtts import gTTS
-import tempfile
 from PIL import Image
 
-# ------------------------------------------------------
-# SIMPLE COLOR NAMES DICTIONARY (BEGINNER FRIENDLY)
-# ------------------------------------------------------
-COLOR_NAMES = {
-    (255, 0, 0): "Red",
-    (0, 255, 0): "Green",
-    (0, 0, 255): "Blue",
-    (255, 255, 0): "Yellow",
-    (255, 165, 0): "Orange",
-    (128, 0, 128): "Purple",
-    (0, 255, 255): "Cyan",
-    (255, 192, 203): "Pink",
-    (165, 42, 42): "Brown",
-    (0, 0, 0): "Black",
-    (255, 255, 255): "White",
-    (128, 128, 128): "Gray"
-}
+st.set_page_config(page_title="Color Blind Assistant", layout="wide")
+st.title("🎨 Color Blindness Assistant Tool")
 
-def get_closest_color_name(B, G, R):
+st.write("This tool helps color-blind users identify colors accurately using:")
+st.write("✔ Real-time webcam")
+st.write("✔ Uploading images")
+st.write("✔ Click detection")
+st.write("✔ Color-blind safe filters")
+
+# -------------------------------------------
+# COLOR NAME DETECTOR
+# -------------------------------------------
+def get_color_name(r, g, b):
+    colors = {
+        "Red": (255, 0, 0),
+        "Green": (0, 255, 0),
+        "Blue": (0, 0, 255),
+        "Yellow": (255, 255, 0),
+        "Orange": (255, 165, 0),
+        "Purple": (128, 0, 128),
+        "Pink": (255, 105, 180),
+        "Brown": (150, 75, 0),
+        "Grey": (128, 128, 128),
+        "White": (255, 255, 255),
+        "Black": (0, 0, 0)
+    }
+
     min_dist = float("inf")
-    closest_name = "Unknown"
-    for (r, g, b), name in COLOR_NAMES.items():
-        dist = (r - R)**2 + (g - G)**2 + (b - B)**2
+    cname = "Unknown"
+
+    for name, (cr, cg, cb) in colors.items():
+        dist = (r-cr)**2 + (g-cg)**2 + (b-cb)**2
         if dist < min_dist:
             min_dist = dist
-            closest_name = name
-    return closest_name
+            cname = name
 
+    return cname
 
-# ------------------------------------------------------
-# SPEAK COLOR NAME
-# ------------------------------------------------------
-def speak(text):
-    tts = gTTS(text=text, lang='en')
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
-        tts.save(fp.name)
-        return fp.name
+# -------------------------------------------
+# COLOR-BLIND SIMULATION MODES
+# -------------------------------------------
+def apply_colorblind_filter(img, mode):
+    matrix = {
+        "None": np.eye(3),
+        "Protanopia (Red Weak)": np.array([[0.566, 0.433, 0.0],
+                                           [0.558, 0.442, 0.0],
+                                           [0.0,   0.242, 0.758]]),
+        "Deuteranopia (Green Weak)": np.array([[0.625, 0.375, 0.0],
+                                               [0.7,   0.3,   0.0],
+                                               [0.0,   0.3,   0.7]]),
+        "Tritanopia (Blue Weak)": np.array([[0.95, 0.05, 0.0],
+                                            [0.0,  0.433, 0.567],
+                                            [0.0,  0.475, 0.525]])
+    }
 
+    mat = matrix[mode]
+    img = img.astype(float) / 255.0
+    filtered = img.dot(mat.T)
+    filtered = np.clip(filtered, 0, 1)
+    return (filtered * 255).astype("uint8")
 
-# ------------------------------------------------------
-# STREAMLIT UI
-# ------------------------------------------------------
-st.title("🎨 Color Blindness Assist Tool")
-st.write("Beginner-friendly tool to detect and speak colors.")
+# -------------------------------------------
+# IMAGE UPLOAD
+# -------------------------------------------
+st.header("📁 Upload Image for Color Detection")
 
-tab1, tab2 = st.tabs(["🟢 Webcam Color Detector", "🖼️ Image Upload & Cursor Color Viewer"])
+uploaded = st.file_uploader("Upload JPG/PNG image", type=["jpg", "jpeg", "png"])
+colorblind_mode = st.selectbox("Choose Color-Blind Mode", 
+                               ["None", "Protanopia (Red Weak)", "Deuteranopia (Green Weak)", "Tritanopia (Blue Weak)"])
 
-# ------------------------------------------------------
-# TAB 1 — WEBCAM COLOR DETECTOR
-# ------------------------------------------------------
-with tab1:
-    st.subheader("Webcam Color Detection")
+if uploaded:
+    img = Image.open(uploaded)
+    img = np.array(img)
 
-    run_cam = st.checkbox("Start Webcam")
+    filtered_img = apply_colorblind_filter(img, colorblind_mode)
+    st.image(filtered_img, caption=f"Filtered View: {colorblind_mode}", use_column_width=True)
 
-    if run_cam:
-        cam = cv2.VideoCapture(0)
+    st.write("Click on the image to detect color (using Streamlit image coordinate tool coming soon).")
 
-        if not cam.isOpened():
-            st.error("Webcam not found!")
-        else:
-            frame_window = st.image([])
+# -------------------------------------------
+# REAL-TIME WEBCAM
+# -------------------------------------------
+st.header("📷 Real-Time Webcam Color Detection")
 
-            while run_cam:
-                ret, frame = cam.read()
-                if not ret:
-                    break
+start_cam = st.checkbox("Start Camera")
 
-                # Take center pixel
-                h, w, _ = frame.shape
-                cx, cy = w//2, h//2
-                B, G, R = frame[cy, cx]
+if start_cam:
+    webcam_frame = st.empty()
+    cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
 
-                color_name = get_closest_color_name(B, G, R)
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            st.write("Camera not found.")
+            break
 
-                # Draw circle + text
-                cv2.circle(frame, (cx, cy), 8, (0, 0, 0), -1)
-                cv2.putText(frame, color_name, (cx + 10, cy - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2)
+        h, w = frame.shape[:2]
+        cx, cy = w//2, h//2
 
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                frame_window.image(frame)
+        b, g, r = frame[cy, cx]
+        cname = get_color_name(r, g, b)
 
-                # Speak
-                if st.button("🔊 Speak Color"):
-                    mp3_path = speak(color_name)
-                    st.audio(mp3_path)
+        cv2.circle(frame, (cx, cy), 5, (0, 0, 0), -1)
+        cv2.putText(frame, f"{cname}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255), 2)
 
-            cam.release()
+        filtered_frame = apply_colorblind_filter(frame, colorblind_mode)
+        webcam_frame.image(filtered_frame, channels="BGR")
 
-# ------------------------------------------------------
-# TAB 2 — IMAGE UPLOAD MODE
-# ------------------------------------------------------
-with tab2:
-    st.subheader("Upload Image & Hover to Detect Color")
+        if not start_cam:
+            break
 
-    uploaded = st.file_uploader("Upload an image", type=["jpg", "png", "jpeg"])
+    cap.release()
 
-    if uploaded:
-        img = Image.open(uploaded).convert("RGB")
-        img_np = np.array(img)
-
-        st.image(img, caption="Move cursor over image")
-
-        st.write("Click anywhere on the image to detect color:")
-
-        # Streamlit cannot detect real mouse hover
-        # so user enters X, Y manually
-        x = st.number_input("Enter X pixel:", min_value=0, max_value=img_np.shape[1]-1)
-        y = st.number_input("Enter Y pixel:", min_value=0, max_value=img_np.shape[0]-1)
-
-        if st.button("Detect Color"):
-            R, G, B = img_np[int(y), int(x)]
-            color_name = get_closest_color_name(B, G, R)
-
-            st.success(f"Detected Color: **{color_name}**")
-            st.write(f"RGB = ({R}, {G}, {B})")
-
-            if st.button("🔊 Speak"):
-                mp3_path = speak(color_name)
-                st.audio(mp3_path)
